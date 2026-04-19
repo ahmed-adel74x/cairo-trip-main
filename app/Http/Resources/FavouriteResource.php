@@ -32,10 +32,30 @@ class FavouriteResource extends JsonResource
                     'ar' => $this->place->location_ar,
                     'en' => $this->place->location_en,
                 ],
+                // ✅ إضافة الـ coordinates
+                'coordinates'    => [
+                    'latitude'  => $this->place->latitude,
+                    'longitude' => $this->place->longitude,
+                ],
                 'rating_avg'     => round($this->place->rating_avg, 1),
                 'total_bookings' => $this->place->total_bookings,
+                'category'       => $this->place->category,
+                'category_label' => $this->getCategoryLabel($this->place->category),
+
+                // ✅ إضافة is_booked
+                'is_booked'      => $this->is_booked ?? false,
             ],
             'created_at'   => $this->created_at->toISOString(),
         ];
+    }
+
+    private function getCategoryLabel(?string $category): array
+    {
+        return match($category) {
+            'attraction' => ['ar' => 'معلم سياحي', 'en' => 'Attraction'],
+            'restaurant' => ['ar' => 'مطعم',        'en' => 'Restaurant'],
+            'hotel'      => ['ar' => 'فندق',        'en' => 'Hotel'],
+            default      => ['ar' => 'أخرى',        'en' => 'Other'],
+        };
     }
 }

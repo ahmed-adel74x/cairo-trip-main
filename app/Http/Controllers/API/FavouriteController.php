@@ -16,14 +16,26 @@ class FavouriteController extends Controller
 
     // ──────────────────────────────────────────────────
     // GET /api/favourites
-    // Get all favourites for authenticated user
     // ──────────────────────────────────────────────────
     public function index(Request $request): JsonResponse
     {
+        $user = $request->user();
+
         $favourites = Favourite::with('place')
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->orderByDesc('created_at')
             ->get();
+
+        // ✅ جيب الـ booked place IDs بـ query واحدة
+        $bookedPlaceIds = $user->bookings()
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->pluck('place_id')
+            ->toArray();
+
+        // ✅ ضيف is_booked لكل favourite
+        $favourites->each(function ($favourite) use ($bookedPlaceIds) {
+            $favourite->is_booked = in_array($favourite->place_id, $bookedPlaceIds);
+        });
 
         return $this->successResponse(
             FavouriteResource::collection($favourites),
@@ -34,19 +46,16 @@ class FavouriteController extends Controller
 
     // ──────────────────────────────────────────────────
     // POST /api/favourites/{place_id}/toggle
-    // Add or remove from favourites
     // ──────────────────────────────────────────────────
     public function toggle(Request $request, int $placeId): JsonResponse
     {
         $user = $request->user();
 
-        // Check place exists
         $place = Place::active()->find($placeId);
         if (!$place) {
             return $this->errorResponse('place_not_found', 404);
         }
 
-        // Check if already favourite
         $favourite = Favourite::where('user_id', $user->id)
             ->where('place_id', $placeId)
             ->first();
@@ -55,7 +64,6 @@ class FavouriteController extends Controller
             // Remove from favourites
             $favourite->delete();
 
-            // Decrement user favourites_count
             if ($user->favourites_count > 0) {
                 $user->decrement('favourites_count');
             }
@@ -76,7 +84,6 @@ class FavouriteController extends Controller
             'place_id' => $placeId,
         ]);
 
-        // Increment user favourites_count
         $user->increment('favourites_count');
 
         return $this->successResponse(
