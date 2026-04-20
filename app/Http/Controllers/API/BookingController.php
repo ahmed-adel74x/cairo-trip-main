@@ -113,37 +113,37 @@ class BookingController extends Controller
     // PUT /api/bookings/{id}/cancel
     // ──────────────────────────────────────────────────
     public function cancel(Request $request, int $id): JsonResponse
-    {
-        $booking = Booking::where('user_id', $request->user()->id)
-            ->find($id);
+{
+    $booking = Booking::with('place')
+        ->where('user_id', $request->user()->id)
+        ->find($id);
 
-        if (!$booking) {
-            return $this->errorResponse('booking_not_found', 404);
-        }
-
-        if (!in_array($booking->status, ['pending', 'confirmed'])) {
-            return $this->errorResponse('booking_cannot_cancel', 422);
-        }
-
-        $booking->update(['status' => 'cancelled']);
-
-        // Delete the linked trip
-        Trip::where('booking_id', $booking->id)->delete();
-
-        // Decrement counters
-        if ($request->user()->trips_count > 0) {
-            $request->user()->decrement('trips_count');
-        }
-        $booking->place()->decrement('total_bookings');
-
-        $booking->load('place');
-
-        return $this->successResponse(
-            new BookingResource($booking),
-            'booking_cancelled',
-            200
-        );
+    if (!$booking) {
+        return $this->errorResponse('booking_not_found', 404);
     }
+
+    if (!in_array($booking->status, ['pending', 'confirmed'])) {
+        return $this->errorResponse('booking_cannot_cancel', 422);
+    }
+
+    // ✅ حذف الـ Trip المرتبط
+    Trip::where('booking_id', $booking->id)->delete();
+
+    // ✅ تنقيص الـ counters
+    if ($request->user()->trips_count > 0) {
+        $request->user()->decrement('trips_count');
+    }
+    $booking->place()->decrement('total_bookings');
+
+    // ✅ حذف الـ booking خالص
+    $booking->delete();
+
+    return $this->successResponse(
+        null,
+        'booking_cancelled',
+        200
+    );
+}
 
     // ──────────────────────────────────────────────────
     // POST /api/bookings/{id}/pay

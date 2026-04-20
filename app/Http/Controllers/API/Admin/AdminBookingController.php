@@ -82,35 +82,35 @@ class AdminBookingController extends Controller
     // PUT /api/admin/bookings/{id}/cancel
     // ──────────────────────────────────────────────────
     public function cancel(int $id): JsonResponse
-    {
-        $booking = Booking::with(['user', 'place'])->find($id);
+{
+    $booking = Booking::with(['user', 'place'])->find($id);
 
-        if (!$booking) {
-            return $this->errorResponse('booking_not_found', 404);
-        }
-
-        if ($booking->status === 'cancelled') {
-            return $this->errorResponse('booking_cannot_cancel', 422);
-        }
-
-        // Update booking status to cancelled
-        $booking->update(['status' => 'cancelled']);
-
-        // ✅ Delete the linked trip completely
-        Trip::where('booking_id', $booking->id)->delete();
-
-        // ✅ Decrement user trips_count
-        if ($booking->user->trips_count > 0) {
-            $booking->user->decrement('trips_count');
-        }
-
-        // ✅ Decrement place total_bookings
-        $booking->place()->decrement('total_bookings');
-
-        return $this->successResponse(
-            new AdminBookingResource($booking->fresh(['user', 'place'])),
-            'booking_cancelled',
-            200
-        );
+    if (!$booking) {
+        return $this->errorResponse('booking_not_found', 404);
     }
+
+    if ($booking->status === 'cancelled') {
+        return $this->errorResponse('booking_cannot_cancel', 422);
+    }
+
+    // ✅ حذف الـ Trip المرتبط
+    Trip::where('booking_id', $booking->id)->delete();
+
+    // ✅ تنقيص الـ counters
+    if ($booking->user->trips_count > 0) {
+        $booking->user->decrement('trips_count');
+    }
+    if ($booking->place->total_bookings > 0) {
+        $booking->place()->decrement('total_bookings');
+    }
+
+    // ✅ حذف الـ booking خالص
+    $booking->delete();
+
+    return $this->successResponse(
+        null,
+        'booking_cancelled',
+        200
+    );
+}
 }
