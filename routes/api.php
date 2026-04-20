@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('bookings',             [BookingController::class, 'index']);
     Route::post('bookings',            [BookingController::class, 'store']);
     Route::put('bookings/{id}/cancel', [BookingController::class, 'cancel']);
+    Route::post('bookings/{id}/pay',   [BookingController::class, 'pay']);
 
     // ── Favourites ────────────────────────────────────────
     Route::get('favourites',                    [FavouriteController::class, 'index']);

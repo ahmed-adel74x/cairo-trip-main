@@ -78,4 +78,11 @@ return [
     // ── General ───────────────────────────────────────
     'server_error'             => 'A server error occurred. Please try again later',
     'not_found'                => 'The requested item was not found',
+
+    // ── Payments ──────────────────────────────────────────
+    'payment_confirmed'              => 'Payment confirmed successfully',
+    'booking_cannot_pay'             => 'Cannot process payment for this booking',
+    'booking_already_paid'           => 'This booking has already been fully paid',
+    'payment_insufficient_landmark'  => 'Full payment is required for landmarks',
+    'payment_insufficient_deposit'   => 'Amount paid is less than the required deposit',
 ];

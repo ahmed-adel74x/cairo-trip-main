@@ -18,11 +18,15 @@ class Booking extends Model
         'total_price_en',
         'total_price_number',
         'status',
+        'payment_method',
+        'amount_paid',
+        'payment_status',
     ];
 
     protected $casts = [
         'booking_date'       => 'date',
         'total_price_number' => 'float',
+        'amount_paid'        => 'float',
     ];
 
     // ── Relationships ──────────────────────────────────
@@ -47,5 +51,38 @@ class Booking extends Model
     public function scopeActive($query)
     {
         return $query->whereIn('status', ['pending', 'confirmed']);
+    }
+
+    // ── Helpers ────────────────────────────────────────
+
+    /**
+     * category → place_type label
+     */
+    public function getPlaceType(): string
+    {
+        return match($this->place->category ?? 'attraction') {
+            'attraction' => 'landmark',
+            'hotel'      => 'hotel',
+            'restaurant' => 'restaurant',
+            default      => 'landmark',
+        };
+    }
+
+    /**
+     * احسب الـ deposit
+     * landmark   → 0.0
+     * hotel      → 20% من total_price_number
+     * restaurant → 20% من total_price_number
+     */
+    public function getDepositAmount(): float
+    {
+        $placeType = $this->getPlaceType();
+
+        return match($placeType) {
+            'landmark'   => 0.0,
+            'hotel'      => round($this->total_price_number * 0.20, 2),
+            'restaurant' => round($this->total_price_number * 0.20, 2),
+            default      => 0.0,
+        };
     }
 }

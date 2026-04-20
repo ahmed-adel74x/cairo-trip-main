@@ -156,7 +156,7 @@ class PlaceSeeder extends Seeder
                 'name_en'          => 'The Egyptian Museum',
                 'description_ar'   => 'رسوم دخول تختلف للمصريين والأجانب',
                 'description_en'   => 'Entry fees vary for Egyptians and foreigners',
-                'image_url'        => 'places/museum.jpg',
+                'image_url'        => 'places/the_Grand_Egyptian_Museum.jpg',
                 'is_free'          => false,
                 'price_ar'         => '٢٠٠ جنيه',
                 'price_en'         => '200 EGP',

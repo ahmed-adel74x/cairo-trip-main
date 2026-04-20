@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BookingRequest;
+use App\Http\Requests\BookingPayRequest;
 use App\Http\Resources\BookingResource;
 use App\Models\Booking;
 use App\Models\Place;
@@ -18,7 +19,6 @@ class BookingController extends Controller
 
     // ──────────────────────────────────────────────────
     // GET /api/bookings
-    // Get all bookings for authenticated user
     // ──────────────────────────────────────────────────
     public function index(Request $request): JsonResponse
     {
@@ -36,7 +36,6 @@ class BookingController extends Controller
 
     // ──────────────────────────────────────────────────
     // POST /api/bookings
-    // Create a new booking
     // ──────────────────────────────────────────────────
     public function store(BookingRequest $request): JsonResponse
     {
@@ -80,6 +79,8 @@ class BookingController extends Controller
             'total_price_en'     => $totalPriceEn,
             'total_price_number' => $totalPriceNumber,
             'status'             => 'pending',
+            'payment_status'     => 'unpaid',
+            'amount_paid'        => 0,
         ]);
 
         // Create trip record linked to this booking
@@ -95,10 +96,8 @@ class BookingController extends Controller
             'status'       => 'upcoming',
         ]);
 
-        // Update place total_bookings counter
+        // Update counters
         $place->increment('total_bookings');
-
-        // Update user trips_count
         $user->increment('trips_count');
 
         $booking->load('place');
@@ -112,7 +111,6 @@ class BookingController extends Controller
 
     // ──────────────────────────────────────────────────
     // PUT /api/bookings/{id}/cancel
-    // Cancel a booking
     // ──────────────────────────────────────────────────
     public function cancel(Request $request, int $id): JsonResponse
     {
@@ -123,23 +121,19 @@ class BookingController extends Controller
             return $this->errorResponse('booking_not_found', 404);
         }
 
-        // Can only cancel pending or confirmed bookings
         if (!in_array($booking->status, ['pending', 'confirmed'])) {
             return $this->errorResponse('booking_cannot_cancel', 422);
         }
 
-        // Update booking status to cancelled
         $booking->update(['status' => 'cancelled']);
 
-        // ✅ Delete the linked trip completely
+        // Delete the linked trip
         Trip::where('booking_id', $booking->id)->delete();
 
-        // ✅ Decrement user trips_count
+        // Decrement counters
         if ($request->user()->trips_count > 0) {
             $request->user()->decrement('trips_count');
         }
-
-        // ✅ Decrement place total_bookings
         $booking->place()->decrement('total_bookings');
 
         $booking->load('place');
@@ -147,6 +141,96 @@ class BookingController extends Controller
         return $this->successResponse(
             new BookingResource($booking),
             'booking_cancelled',
+            200
+        );
+    }
+
+    // ──────────────────────────────────────────────────
+    // POST /api/bookings/{id}/pay
+    // ──────────────────────────────────────────────────
+    public function pay(BookingPayRequest $request, int $id): JsonResponse
+    {
+        $booking = Booking::with('place')
+            ->where('user_id', $request->user()->id)
+            ->find($id);
+
+        if (!$booking) {
+            return $this->errorResponse('booking_not_found', 404);
+        }
+
+        // لازم الـ booking يكون pending أو confirmed
+        if (!in_array($booking->status, ['pending', 'confirmed'])) {
+            return $this->errorResponse('booking_cannot_pay', 422);
+        }
+
+        // لازم مش مدفوع بالكامل
+        if ($booking->payment_status === 'fully_paid') {
+            return $this->errorResponse('booking_already_paid', 422);
+        }
+
+        $amountPaid    = (float) $request->amount_paid;
+        $totalPrice    = $booking->total_price_number;
+        $depositAmount = $booking->getDepositAmount();
+        $placeType     = $booking->getPlaceType();
+
+        // ── التحقق من المبلغ المدفوع ──────────────────
+
+        // للـ landmark مفيش deposit - لازم يدفع كامل
+        if ($placeType === 'landmark') {
+            if ($amountPaid < $totalPrice) {
+                return $this->errorResponse('payment_insufficient_landmark', 422);
+            }
+        }
+
+        // للـ hotel/restaurant - ممكن يدفع deposit أو كامل
+        if (in_array($placeType, ['hotel', 'restaurant'])) {
+            if ($amountPaid < $depositAmount && $amountPaid < $totalPrice) {
+                return $this->errorResponse('payment_insufficient_deposit', 422);
+            }
+        }
+
+        // ── تحديد الـ payment_status ──────────────────
+        $newAmountPaid = $booking->amount_paid + $amountPaid;
+        $newAmountPaid = min($newAmountPaid, $totalPrice); // مش يزيد عن التوتال
+
+        if ($newAmountPaid >= $totalPrice) {
+            $paymentStatus = 'fully_paid';
+        } elseif ($newAmountPaid >= $depositAmount && $depositAmount > 0) {
+            $paymentStatus = 'deposit_paid';
+        } else {
+            $paymentStatus = 'unpaid';
+        }
+
+        // ── تحديث الـ booking ─────────────────────────
+        $booking->update([
+            'payment_method' => $request->payment_method,
+            'amount_paid'    => $newAmountPaid,
+            'payment_status' => $paymentStatus,
+            'status'         => 'confirmed', // تأكيد الحجز بعد الدفع
+        ]);
+
+        // تحديث الـ Trip كمان
+        Trip::where('booking_id', $booking->id)
+            ->update(['status' => 'upcoming']);
+
+        $booking->load('place');
+
+        return $this->successResponse(
+            [
+                'booking'        => new BookingResource($booking),
+                'payment_detail' => [
+                    'payment_method'   => $request->payment_method,
+                    'amount_paid'      => $newAmountPaid,
+                    'amount_paid_ar'   => number_format($newAmountPaid, 0) . ' جنيه',
+                    'amount_paid_en'   => number_format($newAmountPaid, 0) . ' EGP',
+                    'remaining'        => max(0, $totalPrice - $newAmountPaid),
+                    'remaining_ar'     => number_format(max(0, $totalPrice - $newAmountPaid), 0) . ' جنيه',
+                    'remaining_en'     => number_format(max(0, $totalPrice - $newAmountPaid), 0) . ' EGP',
+                    'payment_status'   => $paymentStatus,
+                    'is_fully_paid'    => $paymentStatus === 'fully_paid',
+                ],
+            ],
+            'payment_confirmed',
             200
         );
     }
